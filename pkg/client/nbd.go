@@ -13,7 +13,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/pilebones/go-udev/netlink"
 	"github.com/pojntfx/go-nbd/pkg/ioctl"
 	"github.com/pojntfx/go-nbd/pkg/protocol"
 	"github.com/pojntfx/go-nbd/pkg/server"
@@ -33,6 +32,7 @@ var (
 	ErrMinimumBlockSize           = errors.New("block size below mimimum requested")
 	ErrMaximumBlockSize           = errors.New("block size above maximum requested")
 	ErrBlockSizeNotPowerOfTwo     = errors.New("block size is not a power of 2")
+	ErrUnsupportedFunctionality   = errors.New("unsupported functionality")
 )
 
 type Options struct {
@@ -101,41 +101,7 @@ func Connect(conn net.Conn, device *os.File, options *Options) error {
 	fatal := make(chan error)
 	if options.OnConnected != nil {
 		if options.ReadyCheckUdev {
-			udevConn := new(netlink.UEventConn)
-			if err := udevConn.Connect(netlink.UdevEvent); err != nil {
-				return err
-			}
-			defer udevConn.Close()
-
-			var (
-				udevReadyCh = make(chan netlink.UEvent)
-				udevErrCh   = make(chan error)
-				udevQuit    = udevConn.Monitor(udevReadyCh, udevErrCh, &netlink.RuleDefinitions{
-					Rules: []netlink.RuleDefinition{
-						{
-							Env: map[string]string{
-								"DEVNAME": device.Name(),
-							},
-						},
-					},
-				})
-			)
-			defer close(udevQuit)
-
-			go func() {
-				select {
-				case <-udevReadyCh:
-					close(udevQuit)
-
-					options.OnConnected()
-
-					return
-				case err := <-udevErrCh:
-					fatal <- err
-
-					return
-				}
-			}()
+			return ErrUnsupportedFunctionality
 		} else {
 			go func() {
 				sizeFile, err := os.Open(filepath.Join("/sys", "block", filepath.Base(device.Name()), "size"))
